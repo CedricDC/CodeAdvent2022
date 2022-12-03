@@ -1,21 +1,25 @@
-#include <array>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <numeric>
 #include <string>
+#include <vector>
 
 namespace {
-    constexpr int NUM_MAX = 3; // keep top N calories
+    enum class Part {
+        FIRST = 0,
+        SECOND
+    };
 
-    template <std::size_t NUM_MAX>
-    void addNewTotal(std::array<std::size_t, NUM_MAX>& max_calories, std::size_t new_total) {
+    void addNewTotal(std::vector<std::size_t>& max_calories, std::size_t new_total) {
         // if current total higher than lowest kept total, replace
         if (max_calories[0] < new_total) {
+
             max_calories[0]  = new_total;
 
             // reorder so that highest is last
-            for (std::size_t idx = 0; idx < NUM_MAX-1; ++idx) {
+            std::size_t max_idx = max_calories.size()-1;
+            for (std::size_t idx = 0; idx < max_idx; ++idx) {
                 if (max_calories[idx + 1] < max_calories[idx]) {
                     std::swap(max_calories[idx+1], max_calories[idx]);
                 } else {
@@ -29,9 +33,22 @@ namespace {
 
 int main(int argc, char** argv) {
 
+    std::size_t num_max = 1; // number of max elements to keep
     if (argc < 2) {
         std::cout << "Please provide input file" << std::endl;
         return 1;
+    }
+
+    if (argc > 2) {
+        unsigned int part = std::atol(argv[2]);
+        if (part == 0) {
+            num_max = 1;
+        } else if (part == 1) {
+            num_max = 3;
+        } else {
+            std::cout << "Invalid part number: " << part << std::endl;
+            return 1;
+        }
     }
 
     std::string filename = argv[1];
@@ -42,7 +59,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::array<std::size_t, NUM_MAX> max_calories{};
+    std::vector<std::size_t> max_calories(num_max, 0);
     std::size_t current_calories = 0;
     std::string line;
     while (std::getline(ifile, line)) {
