@@ -19,8 +19,32 @@ namespace {
             return 1 + (c - 'a');
         }
     }
+
+    struct Rucksack {
+        public:
+            // put item into rucksack
+            void insert(char item) {
+                content_ |= (std::uint64_t(1) << (item - 'A'));
+                //           std::cout << "Adding " << char(item) << "(" << (item - 'A') << "), current compartment: " << std::bitset<64>(content_).to_string() << std::endl;
+            }
+
+            // check if item is already present in rucksack
+            bool check(char item) const {
+                return ((content_ & (std::uint64_t(1) << (item - 'A'))) > 0);
+            }
+
+            // dump content of rucksack
+            void clear() {
+                content_ = 0;
+            }
+
+        private:
+            std::uint64_t content_ = 0;
+    };
 }
 
+// Note 1: This is not cross platform compatible, I am assuming that eol == '\n'
+// Note 2: Could be optimized by using https://stackoverflow.com/a/6089413/8224596
 int main(int argc, char** argv) {
 
     if (argc < 2) {
@@ -49,7 +73,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    Rucksack rucksack;
     std::uint64_t sum_priorities = 0;
+
     switch (part) {
         case Part::FIRST:
         {
@@ -58,25 +84,23 @@ int main(int argc, char** argv) {
             // Map A -> 0, then flip bits, e.g. flipping bit 0 means we have 'A'
             std::string line;
             while (std::getline(ifile, line)) {
-                std::uint64_t compartment_1 = 0;
-
                 const std::size_t items_per_bag = line.size() / 2;
                 const char* c = &line[0];
                 for (std::size_t i = 0; i < items_per_bag; ++i, ++c) {
-                    compartment_1 |= (std::uint64_t(1) << (*c - 'A'));
-                    // std::cout << "Adding " << char(*c) << "(" << (*c - 'A') << "), current compartment: " << std::bitset<64>(compartment_1).to_string() << std::endl;
+                    rucksack.insert(*c);
                 }
 
                 // check if particular bits are set in compartment 1
                 for (std::size_t i = 0; i < items_per_bag; ++i, ++c) {
                     // std::cout << "Checking: " << char(*c) << std::endl;
-                    if ((compartment_1 & (std::uint64_t(1) << (*c - 'A'))) > 0) {
-                        // current item was already in compartment 2
+                    if (rucksack.check(*c)) { // current item was already in compartment 2
                         sum_priorities += getPriority(*c);
                         // std::cout << "Common letter: " << *c << ", score = " << getPriority(*c) << std::endl;
                         break;
                     }
                 }
+
+                rucksack.clear();
             }
         }
         break;
@@ -86,7 +110,7 @@ int main(int argc, char** argv) {
         }
         break;
     }
- 
+
     std::cout << "total score: " << sum_priorities << std::endl;
 
     return 0;
