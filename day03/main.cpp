@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 
 namespace {
@@ -74,6 +75,7 @@ int main(int argc, char** argv) {
     }
 
     Rucksack rucksack;
+    Rucksack rucksack_common;
     std::uint64_t sum_priorities = 0;
 
     switch (part) {
@@ -106,7 +108,35 @@ int main(int argc, char** argv) {
         break;
         case Part::SECOND:
         {
-            // TODO
+            // same approach as in 1, but we can process on the fly as we do not need
+            // to know the item length anymore
+            char c;
+            while (!ifile.get(c).fail()) {
+                // first elf : parse whole line
+                rucksack.insert(c);
+                while (ifile.get(c) && c != '\n') {
+                    rucksack.insert(c);
+                }
+
+                // second elf : only keep items which are also in rucksack 1
+                while (ifile.get(c) && c != '\n') {
+                    if (rucksack.check(c)) rucksack_common.insert(c);
+                }
+
+                // third elf : check common items between elf 1 & elf 2, exit if found
+                while (ifile.get(c) && c != '\n') {
+                    if (rucksack_common.check(c)) {
+                        sum_priorities += getPriority(c);
+                        break;
+                    }
+                }
+
+                // skip until eol, empty testing rucksacks
+                // corner case : If we are already at eol, skip this step
+                if (c != '\n') ifile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                rucksack.clear();
+                rucksack_common.clear();
+            }
         }
         break;
     }
