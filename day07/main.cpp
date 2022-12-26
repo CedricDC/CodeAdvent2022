@@ -32,9 +32,13 @@ struct Node {
   // return total size of tree below this node
   std::size_t getTotalSize() const;
 
-  // for part one
+  // for part one : sum up all directories below a certain size
   std::size_t getTotalSmallDirs(std::size_t max_size,
                                 std::size_t& selected_total);
+
+  // for part two : find size of smallest directory with at least min_size
+  std::size_t getSmallestFeasibleSize(std::size_t min_size,
+                                      std::size_t& current_min);
 };
 
 // helpers to make input parsing more readable
@@ -82,42 +86,38 @@ int main(int argc, char** argv) {
 
   Node root(nullptr, "root");
   Node* current_node = &root;
+
+  // Build directory tree
+  CliCommand cli;
+  while (parse(ifile, cli), cli.command != Command::INVALID) {
+    switch (cli.command) {
+      case Command::CD_ROOT:
+        current_node = &root;
+        break;
+      case Command::CD:
+        current_node = current_node->visitChild(cli.name);
+        break;
+      case Command::LS:
+        // read current directory
+        std::string element;
+        int next_char = ifile.peek();
+        while (ifile.peek() != '$' && ifile.good()) {
+          ifile >> element;
+          if (element.front() != 'd') {  // directory, don't care
+            // can we have multiple ls of the same
+            // directory? if yes, we need to keep track of
+            // which file is how big... assuming not needed
+            current_node->local_size += std::stoi(element);
+          }
+          ifile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+        break;
+    }
+  }
+
+  // Solve task
   switch (part) {
     case Part::FIRST: {
-      CliCommand cli;
-      while (parse(ifile, cli), cli.command != Command::INVALID) {
-        switch (cli.command) {
-          case Command::CD_ROOT:
-            std::cout << "CD to root" << std::endl;
-            current_node = &root;
-            break;
-          case Command::CD:
-            std::cout << "CD to " << cli.name << std::endl;
-            current_node = current_node->visitChild(cli.name);
-            break;
-          case Command::LS:
-            // read current directory
-            std::cout << "going to ls" << std::endl;
-            std::string element;
-            int next_char = ifile.peek();
-            std::cout << "next char: " << next_char << " " << char(next_char)
-                      << std::endl;
-            while (ifile.peek() != '$' && ifile.good()) {
-              ifile >> element;
-              if (element.front() != 'd') {  // directory, don't care
-                // can we have multiple ls of the same
-                // directory? if yes, we need to keep track of
-                // which file is how big... assuming not needed
-                int size = std::stoi(element);
-                current_node->local_size += std::stoi(element);
-                std::cout << "Adding size of " << size << std::endl;
-              }
-              ifile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            }
-            break;
-        }
-      }
-
       std::size_t max_size = 100000;
       std::size_t selected_sizes = 0;
       root.getTotalSmallDirs(max_size, selected_sizes);
@@ -126,7 +126,25 @@ int main(int argc, char** argv) {
                 << selected_sizes << std::endl;
     } break;
     case Part::SECOND: {
-      // TODO
+      // TODO: would there be a single pass algorithm to optimize this?
+      // Maybe even one that avoids building the tree in the first place?
+      constexpr std::size_t TOTAL_DISK_SIZE = 70000000;
+      constexpr std::size_t REQUIRED_SIZE = 30000000;
+
+      std::size_t total_used = root.getTotalSize();
+      std::cout << "Total size used is " << total_used << std::endl;
+
+      std::size_t current_free = TOTAL_DISK_SIZE - total_used;
+      if (current_free > REQUIRED_SIZE) {
+        std::cout << "Have enough space!" << std::endl;
+      } else {
+        std::size_t min_to_free = REQUIRED_SIZE - current_free;
+        std::size_t min_feasible_dir_size = total_used;
+        root.getSmallestFeasibleSize(min_to_free, min_feasible_dir_size);
+
+        std::cout << "Size of smallest dir to free enough space: "
+                  << min_feasible_dir_size << std::endl;
+      }
     } break;
   }
 
@@ -141,14 +159,8 @@ Node::Node(Node* parent, const std::string& name)
 
 Node* Node::visitChild(const std::string& name) {
   if (name == "..") {
-    if (parent != nullptr) {
-      std::cout << "Moving up to " << parent->name << std::endl;
-    } else {
-      std::cout << "Parent was nullptr!" << std::endl;
-    }
     return parent;
   } else {
-    std::cout << "Moving down to " << name << std::endl;
     auto it =
         children.try_emplace(name, std::make_unique<Node>(this, name)).first;
     return it->second.get();
@@ -160,7 +172,6 @@ std::size_t Node::getTotalSize() const {
   for (const auto& child : children) {
     total_size += child.second->getTotalSize();
   }
-  std::cout << "Total size of " << name << " is " << total_size << std::endl;
   return total_size;
 }
 
@@ -173,6 +184,25 @@ std::size_t Node::getTotalSmallDirs(std::size_t max_size,
 
   if (dir_size <= max_size) {
     selected_total += dir_size;
+  }
+
+  return dir_size;
+}
+
+std::size_t Node::getSmallestFeasibleSize(std::size_t min_size,
+                                          std::size_t& current_min) {
+  if (current_min == min_size) {
+    // early exit when the smallest possible solution was already found
+    return 0;
+  }
+
+  std::size_t dir_size = local_size;
+  for (const auto& child : children) {
+    dir_size += child.second->getSmallestFeasibleSize(min_size, current_min);
+  }
+
+  if ((dir_size >= min_size) && (dir_size < current_min)) {
+    current_min = dir_size;
   }
 
   return dir_size;
