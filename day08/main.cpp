@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -34,6 +36,8 @@ class Grid {
 
   // Find tree with best visibility
   std::size_t findBestTreeSpotBruteForce() const;
+
+  // I thought this would be faster, but it is slower
   std::size_t findBestTreeSpotV2() const;
 
  private:
@@ -84,7 +88,12 @@ int main(int argc, char** argv) {
       std::cout << "Number of visible trees: " << visible_counter << std::endl;
     } break;
     case Part::SECOND: {
+      auto t0 = std::chrono::steady_clock::now();
       std::size_t best_score = grid.findBestTreeSpotBruteForce();
+      auto t1 = std::chrono::steady_clock::now();
+      std::cout << "Computation took " << 1e-3 * (t1 - t0).count() << " [us]"
+                << std::endl;
+
       std::cout << "Best tree spot has score: " << best_score << std::endl;
     } break;
   }
@@ -326,8 +335,6 @@ std::size_t Grid::findBestTreeSpotBruteForce() const {
 }
 
 std::size_t Grid::findBestTreeSpotV2() const {
-  std::size_t best_score = 0;
-
   // Initially, it seemed that the tree with the highest visibility
   // should always be the highest tree, since if a smaller tree
   // is in the same row/column, the taller tree will always see further
@@ -335,41 +342,106 @@ std::size_t Grid::findBestTreeSpotV2() const {
   //
   //  900010009 --> 9 gets score 0, but 1 gets score 4 * 4 = 16
   //
-  // Cannot think of a clever way to do this, brute forcing it
-  struct TreeInfo {
-    std::size_t score = 1;
-    std::size_t current_score = 0;
-  };
+  // Cannot think of a clever way to do this
+  using Score = std::size_t;
+  std::vector<Score> scoring(grid_.size(), 1);
 
-  std::vector<TreeInfo> scoring(grid_.size());
+  // for each direction and at each cell, keep track of where the last view
+  // blocker was
+  struct Tracker {
+    Tracker() { reset(); }
+
+    void reset() { last_hurdle.fill(0); }
+
+    void view(const uint8_t height) {
+      uint8_t idx = 0;
+      std::size_t* hurdle = last_hurdle.data();
+      for (; idx <= height; ++idx, ++hurdle) {
+        *hurdle = 1;
+      }
+      for (; idx < 10; ++idx, ++hurdle) {
+        ++(*hurdle);  // increment value
+      }
+    }
+
+    std::array<std::size_t, 10> last_hurdle;
+  };
 
   // all edge trees have a score of zero
   {
-    TreeInfo* tree = scoring.data();
-    for (std::size_t col_idx = 0; col_idx < cols_; ++col_idx, ++tree) {
-      tree->score = 0;
+    Score* score = scoring.data();
+    for (std::size_t col_idx = 0; col_idx < cols_; ++col_idx, ++score) {
+      *score = 0;
     }
-    for (std::size_t row_idx = 1; row_idx < rows_ - 2; ++row_idx) {
-      tree->score = 0;
-      tree += (cols_ - 1);  // jump to last column
-      tree->score = 0;
-      ++tree;  // jump to next row
+    for (std::size_t row_idx = 1; row_idx < rows_ - 1; ++row_idx) {
+      *score = 0;
+      score += (cols_ - 1);  // jump to last column
+      *score = 0;
+      ++score;  // jump to next row
     }
-    for (std::size_t col_idx = 0; col_idx < cols_; ++col_idx, ++tree) {
-      tree->score = 0;
+    for (std::size_t col_idx = 0; col_idx < cols_; ++col_idx, ++score) {
+      *score = 0;
     }
   }
 
+  Tracker tracker;
+
+  // view from left
   const uint8_t* height_data = grid_.data() + cols_;
-  for (std::size_t row_idx = 1; row_idx < rows_; ++row_idx) {
-    for (std::size_t col_idx = 0; col_idx < cols_; ++col_idx, ++height_data) {
-      const uint8_t* local_ptr = height_data;
-      std::size_t local_idx = 0;
-      uint8_t current_height = *local_ptr;
+  Score* score = scoring.data() + cols_;
+  for (std::size_t row_idx = 1; row_idx < rows_ - 1; ++row_idx) {
+    tracker.reset();
+
+    for (std::size_t col_idx = 0; col_idx < cols_;
+         ++col_idx, ++height_data, ++score) {
+      *score *= tracker.last_hurdle[*height_data];
+      tracker.view(*height_data);
     }
   }
 
-  return best_score;
+  // view from right
+  for (std::size_t row_idx = 1; row_idx < rows_ - 1; ++row_idx) {
+    tracker.reset();
+
+    height_data = grid_.data() + row_idx * cols_ + cols_ - 1;
+    score = scoring.data() + row_idx * cols_ + cols_ - 1;
+
+    for (std::size_t col_idx = 0; col_idx < cols_;
+         ++col_idx, --height_data, --score) {
+      *score *= tracker.last_hurdle[*height_data];
+      tracker.view(*height_data);
+    }
+  }
+
+  // view from top
+  for (std::size_t col_idx = 1; col_idx < cols_ - 1; ++col_idx) {
+    tracker.reset();
+
+    height_data = grid_.data() + col_idx;
+    score = scoring.data() + col_idx;
+
+    for (std::size_t row_idx = 0; row_idx < rows_;
+         ++row_idx, height_data += cols_, score += cols_) {
+      *score *= tracker.last_hurdle[*height_data];
+      tracker.view(*height_data);
+    }
+  }
+
+  // view from bottom
+  for (std::size_t col_idx = 1; col_idx < cols_ - 1; ++col_idx) {
+    tracker.reset();
+
+    height_data = grid_.data() + (rows_ - 1) * cols_ + col_idx;
+    score = scoring.data() + (rows_ - 1) * cols_ + col_idx;
+
+    for (std::size_t row_idx = 0; row_idx < rows_;
+         ++row_idx, height_data -= cols_, score -= cols_) {
+      *score *= tracker.last_hurdle[*height_data];
+      tracker.view(*height_data);
+    }
+  }
+
+  return *std::max_element(scoring.cbegin(), scoring.cend());
 }
 
 }  // namespace
