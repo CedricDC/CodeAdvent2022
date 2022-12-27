@@ -18,6 +18,9 @@ class Grid {
   // push one row of input file to expand grid
   void pushRow(const std::string& row);
 
+  // return pointer to element
+  const uint8_t* getElem(std::size_t row, std::size_t col) const;
+
   // print current grid (in values)
   void print() const;
 
@@ -28,6 +31,10 @@ class Grid {
 
   // counter number of trees which are visible from at least one direction
   std::size_t countVisible() const;
+
+  // Find tree with best visibility
+  std::size_t findBestTreeSpotBruteForce() const;
+  std::size_t findBestTreeSpotV2() const;
 
  private:
   std::size_t rows_ = 0;
@@ -77,7 +84,8 @@ int main(int argc, char** argv) {
       std::cout << "Number of visible trees: " << visible_counter << std::endl;
     } break;
     case Part::SECOND: {
-      // TODO
+      std::size_t best_score = grid.findBestTreeSpotBruteForce();
+      std::cout << "Best tree spot has score: " << best_score << std::endl;
     } break;
   }
 
@@ -97,6 +105,11 @@ void Grid::pushRow(const std::string& row) {
     grid_.push_back(c - '0');
   }
   ++rows_;
+}
+
+const uint8_t* Grid::getElem(std::size_t row, std::size_t col) const {
+  const uint8_t* data = grid_.data() + col + cols_ * row;
+  return data;
 }
 
 void Grid::print() const {
@@ -237,6 +250,126 @@ std::size_t Grid::countVisible() const {
       });
 
   return visible_count;
+}
+
+std::size_t Grid::findBestTreeSpotBruteForce() const {
+  // +: no need for additional memory
+  // +: simple
+  // -: clearly not optimal
+  std::size_t best_score = 0;
+
+  // ignore trees on border, they have a score of zero
+  for (std::size_t row_idx = 1; row_idx < rows_ - 1; ++row_idx) {
+    for (std::size_t col_idx = 1; col_idx < cols_ - 1; ++col_idx) {
+      std::size_t tree_score = 1;
+      const uint8_t* root = getElem(row_idx, col_idx);
+      const uint8_t height = *root;
+
+      // go left
+      std::size_t counter = 1;
+      const uint8_t* search = root - 1;
+      for (; counter < col_idx && height > *search; ++counter, --search) {
+      }
+
+      if (counter > 0) {
+        tree_score *= counter;
+      } else {
+        continue;
+      }
+
+      // go right
+      counter = 1;
+      search = root + 1;
+      for (; counter < (cols_ - col_idx - 1) && height > *search;
+           ++counter, ++search) {
+      }
+
+      if (counter > 0) {
+        tree_score *= counter;
+      } else {
+        continue;
+      }
+
+      // go up
+      counter = 1;
+      search = root - cols_;
+      for (; counter < row_idx && height > *search;
+           ++counter, search -= cols_) {
+      }
+
+      if (counter > 0) {
+        tree_score *= counter;
+      } else {
+        continue;
+      }
+
+      // go down
+      counter = 1;
+      search = root + cols_;
+      for (; counter < (rows_ - row_idx - 1) && height > *search;
+           ++counter, search += cols_) {
+      }
+
+      if (counter > 0) {
+        tree_score *= counter;
+      } else {
+        continue;
+      }
+
+      if (tree_score > best_score) {
+        best_score = tree_score;
+      }
+    }
+  }
+
+  return best_score;
+}
+
+std::size_t Grid::findBestTreeSpotV2() const {
+  std::size_t best_score = 0;
+
+  // Initially, it seemed that the tree with the highest visibility
+  // should always be the highest tree, since if a smaller tree
+  // is in the same row/column, the taller tree will always see further
+  // However, the multiplicative scoring destroys this approach, e.g.
+  //
+  //  900010009 --> 9 gets score 0, but 1 gets score 4 * 4 = 16
+  //
+  // Cannot think of a clever way to do this, brute forcing it
+  struct TreeInfo {
+    std::size_t score = 1;
+    std::size_t current_score = 0;
+  };
+
+  std::vector<TreeInfo> scoring(grid_.size());
+
+  // all edge trees have a score of zero
+  {
+    TreeInfo* tree = scoring.data();
+    for (std::size_t col_idx = 0; col_idx < cols_; ++col_idx, ++tree) {
+      tree->score = 0;
+    }
+    for (std::size_t row_idx = 1; row_idx < rows_ - 2; ++row_idx) {
+      tree->score = 0;
+      tree += (cols_ - 1);  // jump to last column
+      tree->score = 0;
+      ++tree;  // jump to next row
+    }
+    for (std::size_t col_idx = 0; col_idx < cols_; ++col_idx, ++tree) {
+      tree->score = 0;
+    }
+  }
+
+  const uint8_t* height_data = grid_.data() + cols_;
+  for (std::size_t row_idx = 1; row_idx < rows_; ++row_idx) {
+    for (std::size_t col_idx = 0; col_idx < cols_; ++col_idx, ++height_data) {
+      const uint8_t* local_ptr = height_data;
+      std::size_t local_idx = 0;
+      uint8_t current_height = *local_ptr;
+    }
+  }
+
+  return best_score;
 }
 
 }  // namespace
