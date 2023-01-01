@@ -17,39 +17,43 @@
 namespace {
 enum class Part { FIRST = 0, SECOND };
 
-using Item = std::size_t;  // upgraded from unsigned in for part 2
 using MonkeyId = unsigned int;
 
+template <typename ItemType = std::size_t>
 struct ItemThrow {
-  Item item;
+  ItemType item;
   MonkeyId target;
 };
 
 // an operation consists of the full monkey inspection
-using Operation = std::function<ItemThrow(Item)>;
+template <typename ItemType = std::size_t>
+using Operation = std::function<ItemThrow<ItemType>(ItemType)>;
 
+template <typename ItemType = std::size_t>
 class Monkey {
  public:
+  using Item = ItemType;
+
   Monkey(MonkeyId id) : id_{id} {
-    operation_ = [id = id_](Item val) -> ItemThrow { return {val, id}; };
+    operation_ = [id = id_](ItemType val) -> ItemThrow<ItemType> { return {val, id}; };
   }
 
-  void pushItem(Item item) { items_.push_back(item); }
+  void pushItem(ItemType item) { items_.push_back(item); }
 
-  void setOperation(Operation op) { operation_ = op; }
+  void setOperation(Operation<ItemType> op) { operation_ = op; }
 
   void setModValue(unsigned int value) { mod_value_ = value; }
 
-  ItemThrow inspectNext() {
+  ItemThrow<ItemType> inspectNext() {
     ++num_inspections_;
-    Item item = items_.front();
+    ItemType item = items_.front();
     items_.pop_front();
     return operation_(item);
   }
 
   bool hasItem() const { return !items_.empty(); }
 
-  const std::deque<Item>& items() const { return items_; }
+  const std::deque<ItemType>& items() const { return items_; }
 
   std::size_t numInspections() const { return num_inspections_; }
 
@@ -59,8 +63,8 @@ class Monkey {
 
  private:
   MonkeyId id_ = 0;
-  std::deque<Item> items_;
-  Operation operation_;
+  std::deque<ItemType> items_;
+  Operation<ItemType> operation_;
 
   // for part 2
   unsigned int mod_value_ = 1;
@@ -74,11 +78,14 @@ class Monkey {
  * - No division operations
  * - All values of operation are below 100 (i.e. value in old = old * value)
  */
-bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey>& monkeys);
+template <typename ItemType>
+bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>& monkeys);
 
-void printItems(const std::vector<Monkey>& monkeys);
+template <typename MonkeyType>
+void printItems(const std::vector<MonkeyType>& monkeys);
 
-void printInspections(const std::vector<Monkey>& monkeys);
+template <typename MonkeyType>
+void printInspections(const std::vector<MonkeyType>& monkeys);
 
 // find least common multiple of a set of values
 std::size_t getLcm(const std::vector<std::size_t>& values);
@@ -121,13 +128,15 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::vector<Monkey> monkeys;
-
-  while (parseMonkey(part, ifile, monkeys)) {
-  }
-
   switch (part) {
     case Part::FIRST: {
+      using ItemType = std::size_t;
+      std::vector<Monkey<ItemType>> monkeys;
+
+      while (parseMonkey(part, ifile, monkeys)) {
+      }
+
+      // start simulation
       static constexpr int num_rounds = 20;
       for (int i = 0; i < num_rounds; ++i) {
         for (auto& monkey : monkeys) {
@@ -154,6 +163,13 @@ int main(int argc, char** argv) {
                 << std::endl;
     } break;
     case Part::SECOND: {
+      using ItemType = std::size_t;
+      std::vector<Monkey<ItemType>> monkeys;
+
+      while (parseMonkey(part, ifile, monkeys)) {
+      }
+
+      // start simulation
       static constexpr int num_rounds = 10000;
 
       // Version 1 : big modulo value
@@ -204,7 +220,8 @@ int main(int argc, char** argv) {
 
 namespace {
 
-bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey>& monkeys) {
+template <typename ItemType>
+bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>& monkeys) {
   // we expect incremental ids, if false we need the monkeys in a map
   static std::size_t expected_id = 0;
 
@@ -280,39 +297,39 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey>& monkeys) 
       iss >> false_target;
     }
 
-    Operation operation;
+    Operation<ItemType> operation;
     if (part == Part::FIRST) {
       switch (op_type) {
         case '*': {
-          operation = [op_value, mod_value, true_target, false_target](Item item) {
+          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
             item *= op_value;
             item /= 3;
             if (item % mod_value == 0) {
-              return ItemThrow{item, true_target};
+              return ItemThrow<ItemType>{item, true_target};
             } else {
-              return ItemThrow{item, false_target};
+              return ItemThrow<ItemType>{item, false_target};
             }
           };
         } break;
         case '+': {
-          operation = [op_value, mod_value, true_target, false_target](Item item) {
+          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
             item += op_value;
             item /= 3;
             if (item % mod_value == 0) {
-              return ItemThrow{item, true_target};
+              return ItemThrow<ItemType>{item, true_target};
             } else {
-              return ItemThrow{item, false_target};
+              return ItemThrow<ItemType>{item, false_target};
             }
           };
         } break;
         case 's': {
-          operation = [op_value, mod_value, true_target, false_target](Item item) {
+          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
             item *= item;
             item /= 3;
             if (item % mod_value == 0) {
-              return ItemThrow{item, true_target};
+              return ItemThrow<ItemType>{item, true_target};
             } else {
-              return ItemThrow{item, false_target};
+              return ItemThrow<ItemType>{item, false_target};
             }
           };
         } break;
@@ -322,32 +339,32 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey>& monkeys) 
     } else {  // Part::SECOND
       switch (op_type) {
         case '*': {
-          operation = [op_value, mod_value, true_target, false_target](Item item) {
+          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
             item *= op_value;
             if (item % mod_value == 0) {
-              return ItemThrow{item, true_target};
+              return ItemThrow<ItemType>{item, true_target};
             } else {
-              return ItemThrow{item, false_target};
+              return ItemThrow<ItemType>{item, false_target};
             }
           };
         } break;
         case '+': {
-          operation = [op_value, mod_value, true_target, false_target](Item item) {
+          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
             item += op_value;
             if (item % mod_value == 0) {
-              return ItemThrow{item, true_target};
+              return ItemThrow<ItemType>{item, true_target};
             } else {
-              return ItemThrow{item, false_target};
+              return ItemThrow<ItemType>{item, false_target};
             }
           };
         } break;
         case 's': {
-          operation = [op_value, mod_value, true_target, false_target](Item item) {
+          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
             item *= item;
             if (item % mod_value == 0) {
-              return ItemThrow{item, true_target};
+              return ItemThrow<ItemType>{item, true_target};
             } else {
-              return ItemThrow{item, false_target};
+              return ItemThrow<ItemType>{item, false_target};
             }
           };
         } break;
@@ -365,7 +382,8 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey>& monkeys) 
   return !ifile.fail();
 }
 
-void printItems(const std::vector<Monkey>& monkeys) {
+template <typename MonkeyType>
+void printItems(const std::vector<MonkeyType>& monkeys) {
   for (const auto& monkey : monkeys) {
     std::cout << monkey.id() << ":";
     for (const auto item : monkey.items()) {
@@ -375,7 +393,8 @@ void printItems(const std::vector<Monkey>& monkeys) {
   }
 }
 
-void printInspections(const std::vector<Monkey>& monkeys) {
+template <typename MonkeyType>
+void printInspections(const std::vector<MonkeyType>& monkeys) {
   for (const auto& monkey : monkeys) {
     std::cout << monkey.id() << ": " << monkey.numInspections() << std::endl;
   }
