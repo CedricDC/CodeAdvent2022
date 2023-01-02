@@ -113,10 +113,13 @@ class Monkey {
  * Assumptions:
  * - Ids increase incrementally
  * - No division operations
- * - All values of operation are below 100 (i.e. value in old = old * value)
  */
 template <typename ItemType>
 bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>& monkeys);
+
+// return product of two highest inspection numbers among all monkeys
+template <typename MonkeyType>
+std::size_t computeMonkeyBusiness(const std::vector<MonkeyType>& monkeys);
 
 template <typename MonkeyType>
 void printItems(const std::vector<MonkeyType>& monkeys);
@@ -176,7 +179,7 @@ int main(int argc, char** argv) {
       while (parseMonkey(part, ifile, monkeys)) {
       }
 
-      // start simulation
+      // run simulation
       static constexpr int num_rounds = 20;
       for (int i = 0; i < num_rounds; ++i) {
         for (auto& monkey : monkeys) {
@@ -188,19 +191,8 @@ int main(int argc, char** argv) {
       }
 
       // find two most active monkeys
-      std::vector<std::size_t> most_inspections{0, 0};
-      for (const auto& monkey : monkeys) {
-        std::size_t activity = monkey.numInspections();
-        if (activity > most_inspections[0]) {
-          most_inspections[0] = activity;
-        }
+      std::cout << "Monkey business level: " << computeMonkeyBusiness(monkeys) << std::endl;
 
-        if (most_inspections[0] > most_inspections[1]) {
-          std::swap(most_inspections[0], most_inspections[1]);
-        }
-      }
-      std::cout << "Monkey business level: " << most_inspections[0] * most_inspections[1]
-                << std::endl;
     } break;
     case Part::SECOND: {
       static constexpr int num_rounds = 10000;
@@ -226,7 +218,7 @@ int main(int argc, char** argv) {
           throw std::runtime_error("LCM exceeds max manageable value");
         }
 
-        // start simulation
+        // run simulation
         for (int i = 0; i < num_rounds; ++i) {
           for (auto& monkey : monkeys) {
             while (monkey.hasItem()) {
@@ -241,19 +233,8 @@ int main(int argc, char** argv) {
         }
 
         // find two most active monkeys
-        std::vector<std::size_t> most_inspections{0, 0};
-        for (const auto& monkey : monkeys) {
-          std::size_t activity = monkey.numInspections();
-          if (activity > most_inspections[0]) {
-            most_inspections[0] = activity;
-          }
+        std::cout << "Monkey business level: " << computeMonkeyBusiness(monkeys) << std::endl;
 
-          if (most_inspections[0] > most_inspections[1]) {
-            std::swap(most_inspections[0], most_inspections[1]);
-          }
-        }
-        std::cout << "Monkey business level: " << most_inspections[0] * most_inspections[1]
-                  << std::endl;
       } else if (version == 2) {
         std::cout << "Using individual modulo version" << std::endl;
 
@@ -275,7 +256,7 @@ int main(int argc, char** argv) {
           }
         }
 
-        // start simulation
+        // run simulation
         for (int i = 0; i < num_rounds; ++i) {
           for (auto& monkey : monkeys) {
             while (monkey.hasItem()) {
@@ -286,19 +267,7 @@ int main(int argc, char** argv) {
         }
 
         // find two most active monkeys
-        std::vector<std::size_t> most_inspections{0, 0};
-        for (const auto& monkey : monkeys) {
-          std::size_t activity = monkey.numInspections();
-          if (activity > most_inspections[0]) {
-            most_inspections[0] = activity;
-          }
-
-          if (most_inspections[0] > most_inspections[1]) {
-            std::swap(most_inspections[0], most_inspections[1]);
-          }
-        }
-        std::cout << "Monkey business level: " << most_inspections[0] * most_inspections[1]
-                  << std::endl;
+        std::cout << "Monkey business level: " << computeMonkeyBusiness(monkeys) << std::endl;
       }
     } break;
   }
@@ -520,6 +489,23 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>&
 
   // Note: This will not trigger yet at eof as we want to process the last monkey too
   return !ifile.fail();
+}
+
+template <typename MonkeyType>
+std::size_t computeMonkeyBusiness(const std::vector<MonkeyType>& monkeys) {
+  std::vector<std::size_t> most_inspections{0, 0};
+  for (const auto& monkey : monkeys) {
+    std::size_t activity = monkey.numInspections();
+    if (activity > most_inspections[0]) {
+      most_inspections[0] = activity;
+    }
+
+    if (most_inspections[0] > most_inspections[1]) {
+      std::swap(most_inspections[0], most_inspections[1]);
+    }
+  }
+
+  return most_inspections[0] * most_inspections[1];
 }
 
 template <typename MonkeyType>
