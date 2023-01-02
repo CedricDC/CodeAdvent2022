@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -23,6 +24,41 @@ template <typename ItemType = std::size_t>
 struct ItemThrow {
   ItemType item;
   MonkeyId target;
+};
+
+// Special "item" which keeps values as seen by each monkey
+// This is pretty ugly as it mixes monkey internal and problem global information
+struct MultiItem {
+ public:
+  struct Pair {
+    Pair(std::size_t item, std::size_t mod) : item_value{item}, mod_value{mod} {}
+    std::size_t item_value;
+    std::size_t mod_value;
+  };
+
+  MultiItem(std::size_t start_value) { pairs_.emplace_back(start_value, 1); }
+
+  void initialize(const std::vector<std::size_t>& mod_values) {
+    if (pairs_.size() > 1) {
+      std::cout << "Already initialized" << std::endl;
+      return;
+    }
+
+    std::size_t start_value = pairs_.front().item_value;
+
+    pairs_.clear();
+    pairs_.reserve(mod_values.size());
+    for (const std::size_t mod : mod_values) {
+      pairs_.emplace_back(start_value, mod);
+    }
+  }
+
+  std::vector<Pair>::iterator begin() { return pairs_.begin(); }
+  std::vector<Pair>::iterator end() { return pairs_.end(); }
+  std::size_t getValue(const MonkeyId id) const { return pairs_[id].item_value; }
+
+ private:
+  std::vector<Pair> pairs_;
 };
 
 // an operation consists of the full monkey inspection
@@ -54,6 +90,7 @@ class Monkey {
   bool hasItem() const { return !items_.empty(); }
 
   const std::deque<ItemType>& items() const { return items_; }
+  std::deque<ItemType>& items() { return items_; }
 
   std::size_t numInspections() const { return num_inspections_; }
 
@@ -83,6 +120,9 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>&
 
 template <typename MonkeyType>
 void printItems(const std::vector<MonkeyType>& monkeys);
+
+template <>
+void printItems(const std::vector<Monkey<MultiItem>>& monkeys);
 
 template <typename MonkeyType>
 void printInspections(const std::vector<MonkeyType>& monkeys);
@@ -163,53 +203,103 @@ int main(int argc, char** argv) {
                 << std::endl;
     } break;
     case Part::SECOND: {
-      using ItemType = std::size_t;
-      std::vector<Monkey<ItemType>> monkeys;
-
-      while (parseMonkey(part, ifile, monkeys)) {
-      }
-
-      // start simulation
       static constexpr int num_rounds = 10000;
+      static constexpr int version = 1;
 
       // Version 1 : big modulo value
-      std::vector<std::size_t> mod_values;
-      mod_values.reserve(monkeys.size());
-      for (const auto& m : monkeys) mod_values.push_back(m.getModValue());
+      if (version == 1) {
+        std::cout << "Using big modulo version" << std::endl;
 
-      const std::size_t lcm = getLcm(mod_values);
+        using ItemType = std::size_t;
+        std::vector<Monkey<ItemType>> monkeys;
 
-      if (lcm > std::sqrt(std::numeric_limits<std::size_t>::max())) {
-        throw std::runtime_error("LCM exceeds max manageable value");
-      }
+        while (parseMonkey(part, ifile, monkeys)) {
+        }
 
-      for (int i = 0; i < num_rounds; ++i) {
-        for (auto& monkey : monkeys) {
-          while (monkey.hasItem()) {
-            auto item_throw = monkey.inspectNext();
+        std::vector<std::size_t> mod_values;
+        mod_values.reserve(monkeys.size());
+        for (const auto& m : monkeys) mod_values.push_back(m.getModValue());
 
-            // limit size to manageable value
-            item_throw.item = item_throw.item % lcm;
+        const std::size_t lcm = getLcm(mod_values);
 
-            monkeys[item_throw.target].pushItem(item_throw.item);
+        if (lcm > std::sqrt(std::numeric_limits<std::size_t>::max())) {
+          throw std::runtime_error("LCM exceeds max manageable value");
+        }
+
+        // start simulation
+        for (int i = 0; i < num_rounds; ++i) {
+          for (auto& monkey : monkeys) {
+            while (monkey.hasItem()) {
+              auto item_throw = monkey.inspectNext();
+
+              // limit size to manageable value
+              item_throw.item = item_throw.item % lcm;
+
+              monkeys[item_throw.target].pushItem(item_throw.item);
+            }
           }
         }
-      }
 
-      // find two most active monkeys
-      std::vector<std::size_t> most_inspections{0, 0};
-      for (const auto& monkey : monkeys) {
-        std::size_t activity = monkey.numInspections();
-        if (activity > most_inspections[0]) {
-          most_inspections[0] = activity;
+        // find two most active monkeys
+        std::vector<std::size_t> most_inspections{0, 0};
+        for (const auto& monkey : monkeys) {
+          std::size_t activity = monkey.numInspections();
+          if (activity > most_inspections[0]) {
+            most_inspections[0] = activity;
+          }
+
+          if (most_inspections[0] > most_inspections[1]) {
+            std::swap(most_inspections[0], most_inspections[1]);
+          }
+        }
+        std::cout << "Monkey business level: " << most_inspections[0] * most_inspections[1]
+                  << std::endl;
+      } else if (version == 2) {
+        std::cout << "Using individual modulo version" << std::endl;
+
+        // Version 2 : multi item type
+        using ItemType = MultiItem;
+        std::vector<Monkey<ItemType>> monkeys;
+
+        while (parseMonkey(part, ifile, monkeys)) {
         }
 
-        if (most_inspections[0] > most_inspections[1]) {
-          std::swap(most_inspections[0], most_inspections[1]);
+        std::vector<std::size_t> mod_values;
+        mod_values.reserve(monkeys.size());
+        for (const auto& m : monkeys) mod_values.push_back(m.getModValue());
+
+        // initialize multi item to have value for each monkey
+        for (auto& m : monkeys) {
+          for (auto& item : m.items()) {
+            item.initialize(mod_values);
+          }
         }
+
+        // start simulation
+        for (int i = 0; i < num_rounds; ++i) {
+          for (auto& monkey : monkeys) {
+            while (monkey.hasItem()) {
+              auto item_throw = monkey.inspectNext();
+              monkeys[item_throw.target].pushItem(item_throw.item);
+            }
+          }
+        }
+
+        // find two most active monkeys
+        std::vector<std::size_t> most_inspections{0, 0};
+        for (const auto& monkey : monkeys) {
+          std::size_t activity = monkey.numInspections();
+          if (activity > most_inspections[0]) {
+            most_inspections[0] = activity;
+          }
+
+          if (most_inspections[0] > most_inspections[1]) {
+            std::swap(most_inspections[0], most_inspections[1]);
+          }
+        }
+        std::cout << "Monkey business level: " << most_inspections[0] * most_inspections[1]
+                  << std::endl;
       }
-      std::cout << "Monkey business level: " << most_inspections[0] * most_inspections[1]
-                << std::endl;
     } break;
   }
   auto t1 = std::chrono::steady_clock::now();
@@ -256,7 +346,8 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>&
       std::stringstream iss(item_string);
 
       while (iss >> token_int) {
-        monkey.pushItem(token_int);
+        ItemType item(token_int);
+        monkey.pushItem(item);
         if (iss.peek() == ',') iss.ignore(1);  // ignore comma
       }
     }
@@ -298,50 +389,93 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>&
     }
 
     Operation<ItemType> operation;
-    if (part == Part::FIRST) {
-      switch (op_type) {
-        case '*': {
-          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
-            item *= op_value;
-            item /= 3;
-            if (item % mod_value == 0) {
-              return ItemThrow<ItemType>{item, true_target};
-            } else {
-              return ItemThrow<ItemType>{item, false_target};
-            }
-          };
-        } break;
-        case '+': {
-          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
-            item += op_value;
-            item /= 3;
-            if (item % mod_value == 0) {
-              return ItemThrow<ItemType>{item, true_target};
-            } else {
-              return ItemThrow<ItemType>{item, false_target};
-            }
-          };
-        } break;
-        case 's': {
-          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
-            item *= item;
-            item /= 3;
-            if (item % mod_value == 0) {
-              return ItemThrow<ItemType>{item, true_target};
-            } else {
-              return ItemThrow<ItemType>{item, false_target};
-            }
-          };
-        } break;
-        default:
-          throw std::runtime_error("Operation not supported: " + std::to_string(op_type));
+
+    if constexpr (std::is_same_v<ItemType, std::size_t>) {
+      if (part == Part::FIRST) {
+        switch (op_type) {
+          case '*': {
+            operation = [op_value, mod_value, true_target, false_target](ItemType item) {
+              item *= op_value;
+              item /= 3;
+              if (item % mod_value == 0) {
+                return ItemThrow<ItemType>{item, true_target};
+              } else {
+                return ItemThrow<ItemType>{item, false_target};
+              }
+            };
+          } break;
+          case '+': {
+            operation = [op_value, mod_value, true_target, false_target](ItemType item) {
+              item += op_value;
+              item /= 3;
+              if (item % mod_value == 0) {
+                return ItemThrow<ItemType>{item, true_target};
+              } else {
+                return ItemThrow<ItemType>{item, false_target};
+              }
+            };
+          } break;
+          case 's': {
+            operation = [op_value, mod_value, true_target, false_target](ItemType item) {
+              item *= item;
+              item /= 3;
+              if (item % mod_value == 0) {
+                return ItemThrow<ItemType>{item, true_target};
+              } else {
+                return ItemThrow<ItemType>{item, false_target};
+              }
+            };
+          } break;
+          default:
+            throw std::runtime_error("Operation not supported: " + std::to_string(op_type));
+        }
+      } else {  // Part::SECOND
+        switch (op_type) {
+          case '*': {
+            operation = [op_value, mod_value, true_target, false_target](ItemType item) {
+              item *= op_value;
+              if (item % mod_value == 0) {
+                return ItemThrow<ItemType>{item, true_target};
+              } else {
+                return ItemThrow<ItemType>{item, false_target};
+              }
+            };
+          } break;
+          case '+': {
+            operation = [op_value, mod_value, true_target, false_target](ItemType item) {
+              item += op_value;
+              if (item % mod_value == 0) {
+                return ItemThrow<ItemType>{item, true_target};
+              } else {
+                return ItemThrow<ItemType>{item, false_target};
+              }
+            };
+          } break;
+          case 's': {
+            operation = [op_value, mod_value, true_target, false_target](ItemType item) {
+              item *= item;
+              if (item % mod_value == 0) {
+                return ItemThrow<ItemType>{item, true_target};
+              } else {
+                return ItemThrow<ItemType>{item, false_target};
+              }
+            };
+          } break;
+          default:
+            throw std::runtime_error("Operation not supported: " + std::to_string(op_type));
+        }
+
+        monkey.setModValue(mod_value);
       }
-    } else {  // Part::SECOND
+    } else if constexpr (std::is_same_v<ItemType, MultiItem>) {
       switch (op_type) {
         case '*': {
-          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
-            item *= op_value;
-            if (item % mod_value == 0) {
+          operation = [id = monkey.id(), op_value, mod_value, true_target,
+                       false_target](ItemType item) {
+            for (auto& [item_val, mod_val] : item) {
+              item_val = (item_val * op_value) % mod_val;
+            }
+            if (item.getValue(id) == 0) {
               return ItemThrow<ItemType>{item, true_target};
             } else {
               return ItemThrow<ItemType>{item, false_target};
@@ -349,9 +483,12 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>&
           };
         } break;
         case '+': {
-          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
-            item += op_value;
-            if (item % mod_value == 0) {
+          operation = [id = monkey.id(), op_value, mod_value, true_target,
+                       false_target](ItemType item) {
+            for (auto& [item_val, mod_val] : item) {
+              item_val = (item_val + op_value) % mod_val;
+            }
+            if (item.getValue(id) == 0) {
               return ItemThrow<ItemType>{item, true_target};
             } else {
               return ItemThrow<ItemType>{item, false_target};
@@ -359,9 +496,12 @@ bool parseMonkey(Part part, std::ifstream& ifile, std::vector<Monkey<ItemType>>&
           };
         } break;
         case 's': {
-          operation = [op_value, mod_value, true_target, false_target](ItemType item) {
-            item *= item;
-            if (item % mod_value == 0) {
+          operation = [id = monkey.id(), op_value, mod_value, true_target,
+                       false_target](ItemType item) {
+            for (auto& [item_val, mod_val] : item) {
+              item_val = (item_val * item_val) % mod_val;
+            }
+            if (item.getValue(id) == 0) {
               return ItemThrow<ItemType>{item, true_target};
             } else {
               return ItemThrow<ItemType>{item, false_target};
@@ -388,6 +528,17 @@ void printItems(const std::vector<MonkeyType>& monkeys) {
     std::cout << monkey.id() << ":";
     for (const auto item : monkey.items()) {
       std::cout << " " << item;
+    }
+    std::cout << std::endl;
+  }
+}
+
+template <>
+void printItems(const std::vector<Monkey<MultiItem>>& monkeys) {
+  for (const auto& monkey : monkeys) {
+    std::cout << monkey.id() << ":";
+    for (const auto item : monkey.items()) {
+      std::cout << " " << item.getValue(monkey.id());
     }
     std::cout << std::endl;
   }
